@@ -1,3 +1,9 @@
+/**
+ * This program implements a landscape imagery analysis system with data compression
+ * capabilities. It processes geographic data using three different compression methods
+ * and provides functionality for querying landscape visibility and locations.
+ */
+
 #include <iostream>
 #include <stdio.h>
 #include "gdal.h"
@@ -10,56 +16,145 @@
 #include<tchar.h>
 #include<Psapi.h>
 
-using namespace std;
-
-#define NPoint 70
+#define NPoint 70 // Number of observation points/layers in the landscape data
 
 typedef unsigned char U_CHAR;
 
 using namespace std;
-typedef struct Coordinate
-{
-    double x;
-    double y;
-}Coordinate;
+typedef struct Coordinate {
+    double x;  // X coordinate (longitude/easting)
+    double y;  // Y coordinate (latitude/northing)
+} Coordinate;
 
-//1025
-typedef struct coord
-{
-    int r, c;
-    struct coord* next;
-}coord;
+// Structure for storing grid coordinates in a linked list
+typedef struct coord {
+    int r, c;           // Row and column indices
+    struct coord* next; // Pointer to next coordinate
+} coord;
 
-typedef struct Node
-{
-    unsigned int* arr;
-    struct Node* down;
-    coord* right;
-}Node;
+// Structure for storing compressed landscape data
+typedef struct Node {
+    unsigned int* arr;   // Array storing compressed data
+    struct Node* down;   // Pointer to next node
+    coord* right;        // Pointer to coordinate list
+} Node;
 
-typedef struct Area
-{
-    int len;
-    Node* point;
-    int size;
-}Area;
+// Structure for managing compressed area data
+typedef struct Area {
+    int len;           // Length of compressed data array
+    Node* point;       // Pointer to first node
+    int size;         // Number of unique patterns
+} Area;
 
+/**
+ * Compares two unsigned int arrays for equality
+ * @param a First array
+ * @param b Second array
+ * @param len Length of arrays
+ * @return true if arrays are equal, false otherwise
+ */
 bool compare(unsigned int* a, unsigned int* b, int len);
+
+/**
+ * Searches for a matching data pattern in the compressed area structure
+ * @param ar Pointer to Area structure
+ * @param data Data pattern to search for
+ * @return Pointer to matching Node if found, NULL otherwise
+ */
 Node* lookfor(Area* ar, unsigned int* data);
+
+/**
+ * First compression stage: Compresses 3D binary data into bit-packed format
+ * @param x Input 3D array
+ * @param len Number of layers
+ * @param M Number of rows
+ * @param N Number of columns
+ * @return Compressed 3D array
+ */
 unsigned int*** compress1(unsigned int*** x, int len, int M, int N);
+
+/**
+ * Writes first compression stage results to file
+ */
 void write1(unsigned int*** goal, int len, int M, int N);
+
+/**
+ * Identifies unique patterns in compressed data
+ * @return Area structure containing unique patterns
+ */
 Area* unique(unsigned int*** data, int len, int M, int N);
+
+/**
+ * Second compression stage: Creates lookup table for unique patterns
+ */
 unsigned int** compress2(Area* comArea, unsigned int** data);
+
+/**
+ * Writes second compression stage results to file
+ */
 void write2(Area* comArea, unsigned int** data_status, unsigned int** data, int M, int N);
+
+/**
+ * Third compression stage: Implements run-length encoding
+ */
 void write3(Area* comArea, unsigned int** data_status, unsigned int** a, int M, int N);
-//1025
 
+
+/**
+ * Reads the original uncompressed data from benchmark.txt file
+ * @param goal Reference to 3D array where data will be stored
+ * @param len Number of layers in the data
+ * @param M Number of rows
+ * @param N Number of columns
+ */
 void read0(unsigned int***& goal, int len, int M, int N);
-void read1(unsigned int***& goal, int len, int M, int N);
-void read2(Area*& comArea, unsigned int**& data_status, unsigned int**& data, int M, int N);
-void read3(Area*& comArea, unsigned int**& data_status, unsigned int**& a, int M, int N);
-//1108
 
+/**
+ * Reads the first compression stage data from firstCompress.txt file
+ * This contains the bit-packed representation of the original data
+ * @param goal Reference to 3D array where compressed data will be stored
+ * @param len Number of layers after bit-packing (len = original_len/32 + remainder)
+ * @param M Number of rows
+ * @param N Number of columns
+ */
+void read1(unsigned int***& goal, int len, int M, int N);
+
+/**
+ * Reads the second compression stage data from secondCompress.txt file
+ * This includes both the lookup table of unique patterns and the grid references
+ * @param comArea Reference to Area structure containing pattern information
+ * @param data_status Reference to 2D array storing the lookup table
+ * @param data Reference to 2D array storing grid references
+ * @param M Number of rows
+ * @param N Number of columns
+ */
+void read2(Area*& comArea, unsigned int**& data_status, unsigned int**& data, int M, int N);
+
+/**
+ * Reads the third compression stage data from thirdCompress.txt file
+ * This includes the run-length encoded representation of the grid data
+ * @param comArea Reference to Area structure containing pattern information
+ * @param data_status Reference to 2D array storing the lookup table
+ * @param a Reference to 2D array where decoded run-length data will be stored
+ * @param M Number of rows
+ * @param N Number of columns
+ */
+void read3(Area*& comArea, unsigned int**& data_status, unsigned int**& a, int M, int N);
+
+/**
+ * Compares two arrays of unsigned integers for equality
+ * @param a First array to compare
+ * @param b Second array to compare
+ * @param len Length of both arrays
+ * @return 1 if arrays are equal, 0 if they differ or if either is NULL
+ *
+ * Example usage:
+ * unsigned int arr1[] = {1, 2, 3};
+ * unsigned int arr2[] = {1, 2, 3};
+ * if (equals(arr1, arr2, 3)) {
+ *     // Arrays are equal
+ * }
+ */
 int equals(unsigned int* a, unsigned int* b, int len)
 {
     int i = 0;
@@ -73,6 +168,13 @@ int equals(unsigned int* a, unsigned int* b, int len)
     }
     return 1;
 }
+
+/**
+ * Decodes a bit-packed integer array back to binary array
+ * @param x Input packed array
+ * @param n Length of output array
+ * @return Decoded binary array
+ */
 int* decode(unsigned int x[], int n)
 {
     int i, k;
@@ -96,7 +198,13 @@ int* decode(unsigned int x[], int n)
     return ch;
 }
 
-unsigned int* encode(int* temp, int len)//将编码压缩为整型数组
+/**
+ * Encodes a binary array into bit-packed format
+ * @param temp Input binary array
+ * @param len Length of input array
+ * @return Packed integer array
+ */
+unsigned int* encode(int* temp, int len)//Compress encoding into integer
 {
     //cout << "hello\n" << endl;
     int lenComp = len / 32 + (len % 32 == 0 ? 0 : 1);
@@ -124,6 +232,9 @@ unsigned int* encode(int* temp, int len)//将编码压缩为整型数组
     return tempIntcode;
 }
 
+/**
+ * Queries landscape imagery visibility for original uncompressed data
+ */
 int* inquire_landscapeImagery0(unsigned int*** x, int len, int M, int N, Coordinate left, Coordinate right, int coorMinX, int coorMinY, double resolution)
 {
     int rowStart, rowEnd, colStart, colEnd;
@@ -171,6 +282,9 @@ int* inquire_landscapeImagery0(unsigned int*** x, int len, int M, int N, Coordin
     return temp;
 }
 
+/**
+ * Queries landscape imagery visibility for first compression stage
+ */
 int* inquire_landscapeImagery1(unsigned int*** x, int lencomp, int len, int M, int N, Coordinate left, Coordinate right, int coorMinX, int coorMinY, double resolution)
 {
     int rowStart, rowEnd, colStart, colEnd;
@@ -219,6 +333,9 @@ int* inquire_landscapeImagery1(unsigned int*** x, int lencomp, int len, int M, i
     return p;
 }
 
+/**
+ * Queries landscape imagery visibility for second compression stage
+ */
 int* inquire_landscapeImagery2(unsigned int** x, unsigned int indexStatus, unsigned int** dataStatus, int lencomp, int len, int M, int N, Coordinate left, Coordinate right, int coorMinX, int coorMinY, double resolution)
 {
     int rowStart, rowEnd, colStart, colEnd;
@@ -267,6 +384,22 @@ int* inquire_landscapeImagery2(unsigned int** x, unsigned int indexStatus, unsig
     return p;
 }
 
+/**
+ * Queries locations matching specified landscape imagery pattern in original uncompressed data
+ *
+ * @param x 3D array of original landscape data [layer][row][col]
+ * @param len Number of layers in the data
+ * @param M Number of rows
+ * @param N Number of columns
+ * @param landscapeImagery Binary array specifying which layers to consider (1 = consider, 0 = ignore)
+ * @return 2D array where 1 indicates matching locations and 0 indicates non-matching locations
+ *
+ * Algorithm:
+ * 1. Initialize result array with all 1's
+ * 2. For each layer marked as 1 in landscapeImagery:
+ *    - Update result using logical AND with that layer's data
+ * 3. Final result shows locations matching all selected layers
+ */
 int** inquire_location0(unsigned int*** x, int len, int M, int N, int* landscapeImagery)
 {
     int** p = (int**)malloc(M * sizeof(int*));
@@ -279,12 +412,10 @@ int** inquire_location0(unsigned int*** x, int len, int M, int N, int* landscape
         for (int j = 0; j < N; j++)
             p[i][j] = 1;
     }
-    //cout << "======" << endl;
     for (int k = 0; k < len; k++)
     {
         if (landscapeImagery[k] == 1)
         {
-            //cout << "88888888" << endl;
             for (int i = 0; i < M; i++)
                 for (int j = 0; j < N; j++)
                     p[i][j] = p[i][j] && x[k][i][j];
@@ -293,6 +424,22 @@ int** inquire_location0(unsigned int*** x, int len, int M, int N, int* landscape
     return p;
 }
 
+/**
+ * Queries locations matching specified landscape imagery pattern in first compression stage data
+ *
+ * @param x 3D array of compressed landscape data
+ * @param lencomp Length of compressed data (original_length/32 + remainder)
+ * @param M Number of rows
+ * @param N Number of columns
+ * @param landscapeImagery Compressed pattern to search for
+ * @return 2D array where 1 indicates matching locations and 0 indicates non-matching locations
+ *
+ * Algorithm:
+ * 1. Initialize result array with all 0's
+ * 2. For each grid position:
+ *    - Compare compressed data with target pattern
+ *    - Mark matching positions with 1
+ */
 int** inquire_location1(unsigned int*** x, int lencomp, int M, int N, unsigned int* landscapeImagery)
 {
     int** p = (int**)malloc(M * sizeof(int*));
@@ -319,6 +466,23 @@ int** inquire_location1(unsigned int*** x, int lencomp, int M, int N, unsigned i
     return p;
 }
 
+/**
+ * Queries locations matching specified index in second compression stage data
+ *
+ * @param x 2D array of indices referencing the compressed patterns
+ * @param M Number of rows
+ * @param N Number of columns
+ * @param indexLandscapeImagery Index of the pattern to search for
+ * @return 2D array where 1 indicates matching locations and 0 indicates non-matching locations
+ *
+ * Algorithm:
+ * 1. Initialize result array with all 0's
+ * 2. Mark all positions matching the target index with 1
+ *
+ * Note: There appears to be a bug in the comparison - using = instead of ==
+ * Current: if (x[i][j] = indexLandscapeImagery)
+ * Should be: if (x[i][j] == indexLandscapeImagery)
+ */
 int** inquire_location2(unsigned int** x, int M, int N, unsigned int indexLandscapeImagery)
 {
     int** p = (int**)malloc(M * sizeof(int*));
@@ -342,47 +506,54 @@ int** inquire_location2(unsigned int** x, int M, int N, unsigned int indexLandsc
     return p;
 }
 
-int main()
-{
+/**
+ * Main function to demonstrate landscape data compression and analysis
+ * Processes multiple GeoTIFF files, applies three compression stages,
+ * and performs performance testing of visibility and location queries
+ */
+int main() {
     clock_t start, finish;
     double duration;
-
-
     FILE* file;
 
-    GDALAllRegister();  // 注册所有驱动程序，准备读研究区域高程数据   
+    // Initialize GDAL for GeoTIFF processing
+    GDALAllRegister();
     GDALDataset* poDataset;
-    double M_x, M_y;
-    int MM, NN;
+    double M_x, M_y;  // Study area minimum coordinates
+    int MM, NN;       // Height and width of raster
+
+    // Allocate 3D array for multiple landscape layers
     unsigned int*** arr = (unsigned int***)malloc(NPoint * sizeof(unsigned int**));
-    for (int i = 0; i < NPoint; i++)
-    {
+
+    // Process each GeoTIFF file
+    for (int i = 0; i < NPoint; i++) {
+        // Construct input filename
         char strin[5];
         sprintf(strin, "%d", i);
         char file_in[30] = "f:/in/100/in_";
         strcat(file_in, strin);
         strcat(file_in, ".tif");
 
+        // Open and validate GeoTIFF file
         poDataset = static_cast<GDALDataset*>(GDALOpen(file_in, GA_ReadOnly));
-
         if (poDataset == NULL) {
             std::cout << "Cannot open TIFF file." << std::endl;
             return 1;
         }
+
+        // Get raster dimensions
         int nWidth = poDataset->GetRasterXSize();
         int nHeight = poDataset->GetRasterYSize();
-
         MM = nHeight;
         NN = nWidth;
 
+        // Allocate memory for current layer
         arr[i] = (unsigned int**)malloc(nHeight * sizeof(unsigned int*));
-
-        for (int j = 0; j < nHeight; j++)
-        {
+        for (int j = 0; j < nHeight; j++) {
             arr[i][j] = (unsigned int*)malloc(nWidth * sizeof(unsigned int));
         }
 
-        //获取研究区域的坐标
+        // Get study area coordinates
         double adfGeoTransform[6];
         poDataset->GetGeoTransform(adfGeoTransform);
         double minX = adfGeoTransform[0];
@@ -392,15 +563,17 @@ int main()
         M_x = minX;
         M_y = minY;
 
-        // 获取 TIFF 文件的第一个波段
+        // Read first band of TIFF file
         GDALRasterBand* poBand = poDataset->GetRasterBand(1);
 
-        for (int j = 0; j < nHeight; j++) {//nHeight
-            for (int k = 0; k < nWidth; k++) {//nWidth
+        // Process each pixel
+        for (int j = 0; j < nHeight; j++) {
+            for (int k = 0; k < nWidth; k++) {
                 float pixel;
                 GDALRasterIO(poBand, GF_Read, k, j, 1, 1, &pixel, 1, 1, GDT_Float32, 0, 0);
                 int temp = (int)pixel;
                 arr[i][j][k] = temp;
+                // Binarize: 1 remains 1, everything else becomes 0
                 if (1 != arr[i][j][k])
                     arr[i][j][k] = 0;
             }
@@ -408,13 +581,11 @@ int main()
         GDALClose(poDataset);
     }
 
-    //三维原始输出out
+    // Write original 3D data to benchmark file
     file = fopen("f:/out1229/benchmark.txt", "w");
     for (int i = 0; i < NPoint; i++) {
-        //fprintf(file, "%d\n", i + 1);
-        for (int j = 0; j < MM; j++) {//nHeight
-            for (int k = 0; k < NN; k++) {//nWidth
-
+        for (int j = 0; j < MM; j++) {
+            for (int k = 0; k < NN; k++) {
                 fprintf(file, "%u ", arr[i][j][k]);
             }
             fprintf(file, "\n\n");
@@ -422,53 +593,46 @@ int main()
     }
     fclose(file);
 
+    // First compression stage: Bit packing
     unsigned int*** goal;
-
     start = clock();
-
-    goal = compress1(arr, NPoint, MM, NN);//compress 1
+    goal = compress1(arr, NPoint, MM, NN);
     int lencompress = NPoint / 32 + (NPoint % 32 == 0 ? 0 : 1);
-
-    //三维压缩输出
     write1(goal, lencompress, MM, NN);
     finish = clock();
     duration = (double)(finish - start) / CLOCKS_PER_SEC;
-    cout << endl << "第一次压缩时间:" << duration << endl;
+    cout << endl << "First compression time:" << duration << endl;
 
-
-
+    // Second compression stage: Pattern deduplication
     start = clock();
     Area* comArea = unique(goal, lencompress, MM, NN);
     unsigned int** data2;
-
     data2 = (unsigned int**)malloc(MM * sizeof(unsigned int*));
     for (int i = 0; i < MM; i++)
         data2[i] = (unsigned int*)malloc(NN * sizeof(unsigned int));
-    unsigned int** data_status = compress2(comArea, data2);//compress 2	
-
-    //去重之后输出
+    unsigned int** data_status = compress2(comArea, data2);
     write2(comArea, data_status, data2, MM, NN);
     finish = clock();
     duration = (double)(finish - start) / CLOCKS_PER_SEC;
-    cout << endl << "第二次压缩时间:" << duration << endl;
+    cout << endl << "Second compression time:" << duration << endl;
 
+    // Third compression stage: Run-length encoding
     start = clock();
-    //游程编码后输出
     write3(comArea, data_status, data2, MM, NN);
     finish = clock();
     duration = (double)(finish - start) / CLOCKS_PER_SEC;
-    cout << endl << "第三次压缩时间:" << duration << endl;
+    cout << endl << "Third compression time:" << duration << endl;
 
+    // Define test coordinates for visibility analysis
+    Coordinate first[] = { {518800,4506041},{518300,4504041},{516800,4503188},
+                          {515800,4502400},{517240,4501000} };
+    Coordinate second[] = { {521300,4506666},{521300,4506666},{521300,4506666},
+                           {521300,4506666},{521210,4508888} };
 
-    Coordinate first[] = { {518800,4506041},{518300,4504041},{516800,4503188},{515800,4502400},{517240,4501000} };
-    Coordinate second[] = { {521300,4506666},{521300,4506666},{521300,4506666},{521300,4506666},{521210,4508888} };
-
-
-
-
-    cout << "现在输出查特征点可见性的时间" << endl;
-    for (int kk = 0; kk < 5; kk++)
-    {
+    // Performance testing: Feature point visibility queries
+    cout << "Now measuring visibility query performance" << endl;
+    for (int kk = 0; kk < 5; kk++) {
+        // Test original data structure
         start = clock();
         read0(arr, NPoint, MM, NN);
         for (int k = 0; k < 1000; k++)
@@ -477,14 +641,15 @@ int main()
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
         cout << endl << "benchmark:" << duration << "   ";
 
+        // Test first compression
         start = clock();
         read1(goal, lencompress, MM, NN);
         for (int k = 0; k < 1000; k++)
-            inquire_landscapeImagery1(goal, lencompress, NPoint, MM, NN, first[kk], second[kk], M_x, M_y, 12.5);
+            inquire_landscapeImagery1(goal, lencompress, NPoint, MM, NN,
+                first[kk], second[kk], M_x, M_y, 12.5);
         finish = clock();
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
         cout << endl << "firstCompress:" << duration << "   ";
-
         start = clock();
         read2(comArea, data_status, data2, MM, NN);
         for (int k = 0; k < 1000; k++)
@@ -501,9 +666,8 @@ int main()
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
         cout << endl << "thirdCompress:" << duration << endl;
     }
-
-    cout << "现在输出查区位的时间" << endl;
-
+    
+    cout << "Now measuring location query performance" << endl;
     int** landscapeIm = (int**)malloc(5 * sizeof(int*));
     int number = 70;
     for (int j = 0; j < 5; j++)
@@ -525,7 +689,7 @@ int main()
         }
         finish = clock();
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
-        cout << endl << "基准结构上查询:" << duration << "   ";
+        cout << endl << "benchmark:" << duration << "   ";
         unsigned* landcom = NULL;
 
         if (NULL != landcom)
@@ -544,11 +708,10 @@ int main()
 
         finish = clock();
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
-        cout << endl << "第一次压缩结构查询:" << duration << "   ";
+        cout << endl << "firstCompress:" << duration << "   ";
 
-        srand(time(NULL)); // 设置随机数种子为当前时间
-        int randomNumber = (rand() % (10 - 1 + 1)) + 1; // 生成1到10之间的随机数
-        // printf("随机数为：%d\n", randomNumber);
+        srand(time(NULL)); 
+        int randomNumber = (rand() % (10 - 1 + 1)) + 1;         
         start = clock();
         read2(comArea, data_status, data2, MM, NN);
         for (int k = 0; k < 1000; k++)
@@ -560,7 +723,7 @@ int main()
         }
         finish = clock();
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
-        cout << endl << "第二次压缩结构查询:" << duration << endl;
+        cout << endl << "secondCompress:" << duration << endl;
 
         start = clock();
         read3(comArea, data_status, data2, MM, NN);
@@ -573,26 +736,35 @@ int main()
         }
         finish = clock();
         duration = (double)(finish - start) / CLOCKS_PER_SEC * 1000;
-        cout << endl << "第三次压缩结构查询:" << duration << endl;
+        cout << endl << "thirdCompress:" << duration << endl;
     }
     return 0;
 }
 
-
-//1025
+/**
+ * Compares two arrays for equality
+ * @param a First array pointer
+ * @param b Second array pointer
+ * @param len Length of arrays to compare
+ * @return true if arrays are identical, false otherwise
+ */
 bool compare(unsigned int* a, unsigned int* b, int len)
 {
-    //int flag = true;
     for (int i = 0; i < len; i++)
         if (a[i] != b[i])
             return false;
     return true;
 }
 
+/**
+ * Searches for a matching pattern in the Area structure
+ * @param ar Pointer to Area structure containing patterns
+ * @param data Pattern to search for
+ * @return Pointer to matching Node if found, NULL otherwise
+ */
 Node* lookfor(Area* ar, unsigned int* data)
 {
     Node* head = ar->point;
-    //bool flag = false;
     while (head != NULL)
     {
         if (compare(head->arr, data, ar->len))
@@ -604,7 +776,16 @@ Node* lookfor(Area* ar, unsigned int* data)
     return NULL;
 }
 
-unsigned int*** compress1(unsigned int*** x, int len, int M, int N)//三维len,M,N.
+/**
+ * First compression stage: Bit-packing compression
+ * Compresses binary landscape data by packing multiple layers into integers
+ * @param x Original 3D binary array
+ * @param len Number of layers
+ * @param M Number of rows
+ * @param N Number of columns
+ * @return Compressed 3D array
+ */
+unsigned int*** compress1(unsigned int*** x, int len, int M, int N)
 {
     int lenComp = len / 32 + (len % 32 == 0 ? 0 : 1);
     unsigned int*** p = (unsigned int***)malloc(lenComp * sizeof(unsigned int**));
@@ -647,20 +828,20 @@ unsigned int*** compress1(unsigned int*** x, int len, int M, int N)//三维len,M,N
 
 void write1(unsigned int*** goal, int len, int M, int N)
 {
-    FILE* file = fopen("f:/out1229/firstCompress.txt", "w"); // 打开文件进行写入，以文本方式打开
+    FILE* file = fopen("f:/out1229/firstCompress.txt", "w");
 
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
     for (int k = 0; k < len; k++) {
         for (int i = 0; i < M; i++) {
             for (int j = 0; j < N; j++) {
-                fprintf(file, "%u ", goal[k][i][j]); // 将每个元素写入文件，使用空格分隔
+                fprintf(file, "%u ", goal[k][i][j]); // Write each element to the file, separated by spaces
             }
-            fprintf(file, "\n"); // 写入换行符，表示一行结束
+            fprintf(file, "\n"); // Write a newline character to indicate end of line
         }
-        fprintf(file, "\n\n\n"); // 写入换行符，表示一行结束
+        fprintf(file, "\n\n\n");
     }
     fclose(file);
 }
@@ -679,7 +860,7 @@ Area* unique(unsigned int*** data, int len, int M, int N)
             for (int k = 0; k < len; k++)
                 temp[k] = data[k][i][j];
             Node* p = lookfor(ha, temp);
-            if (NULL == p)//新建一个景观视觉状态
+            if (NULL == p)//Create a new landscape visual state
             {
                 size++;
                 Node* q = (Node*)malloc(sizeof(Node));
@@ -693,7 +874,7 @@ Area* unique(unsigned int*** data, int len, int M, int N)
                 q->down = ha->point;
                 ha->point = q;
             }
-            else //将坐标加在已有景观视觉状态的末尾。
+            else //Add coordinates to the end of existing landscape visual state
             {
                 coord* q = (coord*)malloc(sizeof(coord));
                 q->r = i;
@@ -736,12 +917,12 @@ unsigned int** compress2(Area* comArea, unsigned int** data)
 
 void write2(Area* comArea, unsigned int** data_status, unsigned int** data, int M, int N)
 {
-    FILE* file = fopen("f:/out1229/secondCompress.txt", "w"); // 打开文件进行写入，以文本方式打开
+    FILE* file = fopen("f:/out1229/secondCompress.txt", "w"); // Open file for writing in text mode
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
-    //打印景观状态
+    //Print landscape states
     for (int i = 0; i < comArea->size; i++)
     {
         fprintf(file, "%u:", i);
@@ -749,7 +930,7 @@ void write2(Area* comArea, unsigned int** data_status, unsigned int** data, int 
             fprintf(file, "%u ", data_status[i][k]);
         fprintf(file, "\n");
     }
-    //打印二次压缩数据
+    //Print secondary compression data
     for (int i = 0; i < M; i++)
     {
         for (int j = 0; j < N; j++)
@@ -761,13 +942,13 @@ void write2(Area* comArea, unsigned int** data_status, unsigned int** data, int 
 
 void write3(Area* comArea, unsigned int** data_status, unsigned int** a, int M, int N)
 {
-    FILE* file = fopen("f:/out1229/thirdCompress.txt", "w"); // 打开文件进行写入，以文本方式打开
+    FILE* file = fopen("f:/out1229/thirdCompress.txt", "w"); // Open file for writing in text mode
 
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
-    //打印景观状态
+    //Print landscape states
     for (int i = 0; i < comArea->size; i++)
     {
         fprintf(file, "%u:", i);
@@ -775,13 +956,12 @@ void write3(Area* comArea, unsigned int** data_status, unsigned int** a, int M, 
             fprintf(file, "%u ", data_status[i][k]);
         fprintf(file, "\n");
     }
-    // fprintf(file, "abcdefg\n");
-     //打印感知细节（感知栅格的三次压缩）
+    //Print perception details (third compression of perception grid)
     for (int i = 0; i < M; i++)
     {
         unsigned int flag = a[i][0];
         int count = 0;
-        for (int j = 1; j < N; j++)//一行行程编码
+        for (int j = 1; j < N; j++)//Run-length encoding for each row
         {
             if (a[i][j] == flag)
                 count++;
@@ -796,11 +976,10 @@ void write3(Area* comArea, unsigned int** data_status, unsigned int** a, int M, 
         fprintf(file, "\n");
     }
 }
-
 void read0(unsigned int***& goal, int len, int M, int N) {
     FILE* file = fopen("f:/out1229/benchmark.txt", "r");
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
 
@@ -818,7 +997,7 @@ void read0(unsigned int***& goal, int len, int M, int N) {
 void read1(unsigned int***& goal, int len, int M, int N) {
     FILE* file = fopen("f:/out1229/firstCompress.txt", "r");
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
 
@@ -833,16 +1012,14 @@ void read1(unsigned int***& goal, int len, int M, int N) {
     fclose(file);
 }
 
-
-
 void read2(Area*& comArea, unsigned int**& data_status, unsigned int**& data, int M, int N) {
     FILE* file = fopen("f:/out1229/secondCompress.txt", "r");
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
 
-    // 读取景观状态
+    // Read landscape states
     for (int i = 0; i < comArea->size; i++) {
         unsigned int index;
         fscanf(file, "%u:", &index);
@@ -851,7 +1028,7 @@ void read2(Area*& comArea, unsigned int**& data_status, unsigned int**& data, in
         }
     }
 
-    // 读取二次压缩数据
+    // Read secondary compression data
     for (int i = 0; i < M; i++) {
         for (int j = 0; j < N; j++) {
             fscanf(file, "%u", &data[i][j]);
@@ -864,11 +1041,11 @@ void read2(Area*& comArea, unsigned int**& data_status, unsigned int**& data, in
 void read3(Area*& comArea, unsigned int**& data_status, unsigned int**& a, int M, int N) {
     FILE* file = fopen("f:/out1229/thirdCompress.txt", "r");
     if (file == NULL) {
-        printf("文件打开失败！");
+        printf("Failed to open file!");
         return;
     }
 
-    // 读取景观状态
+    // Read landscape states
     for (int i = 0; i < comArea->size; i++) {
         unsigned int index;
         fscanf(file, "%u:", &index);
@@ -877,7 +1054,7 @@ void read3(Area*& comArea, unsigned int**& data_status, unsigned int**& a, int M
         }
     }
 
-    // 读取行程编码数据
+    // Read run-length encoding data
     for (int i = 0; i < M; i++) {
         unsigned int flag, count;
         int j = 0;
